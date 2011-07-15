@@ -415,6 +415,25 @@ static ssize_t smt_this_nr_running(struct kobject *kobj, struct kobj_attribute *
 	return len;
 }
 
+static ssize_t smt_max_load(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][0].max_load);
+	}
+
+	return len;
+}
+
+
 static ssize_t smt_busiest_load_per_task(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -577,6 +596,24 @@ static ssize_t mc_this_nr_running(struct kobject *kobj, struct kobj_attribute *a
 	return len;
 }
 
+static ssize_t mc_max_load(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][1].max_load);
+	}
+
+	return len;
+}
+
 static ssize_t mc_busiest_load_per_task(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -645,6 +682,7 @@ static struct kobj_attribute smt_avg_load_attr			= __ATTR(avg_load, 0666, smt_av
 static struct kobj_attribute smt_this_load_attr			= __ATTR(this_load, 0666, smt_this_load, NULL);
 static struct kobj_attribute smt_this_load_per_task_attr	= __ATTR(this_load_per_task, 0666, smt_this_load_per_task, NULL);
 static struct kobj_attribute smt_this_nr_running_attr		= __ATTR(this_nr_running, 0666, smt_this_nr_running, NULL);
+static struct kobj_attribute smt_max_load_attr			= __ATTR(max_load, 0666, smt_max_load, NULL);
 static struct kobj_attribute smt_busiest_load_per_task_attr	= __ATTR(busiest_load_per_task, 0666, smt_busiest_load_per_task, NULL);
 static struct kobj_attribute smt_busiest_nr_running_attr	= __ATTR(busiest_nr_running, 0666, smt_busiest_nr_running, NULL);
 static struct kobj_attribute smt_busiest_group_capacity_attr	= __ATTR(busiest_group_capacity, 0666, smt_busiest_group_capacity, NULL);
@@ -656,6 +694,7 @@ static struct kobj_attribute mc_avg_load_attr			= __ATTR(avg_load, 0666, mc_avg_
 static struct kobj_attribute mc_this_load_attr			= __ATTR(this_load, 0666, mc_this_load, NULL);
 static struct kobj_attribute mc_this_load_per_task_attr		= __ATTR(this_load_per_task, 0666, mc_this_load_per_task, NULL);
 static struct kobj_attribute mc_this_nr_running_attr		= __ATTR(this_nr_running, 0666, mc_this_nr_running, NULL);
+static struct kobj_attribute mc_max_load_attr			= __ATTR(max_load, 0666, mc_max_load, NULL);
 static struct kobj_attribute mc_busiest_load_per_task_attr	= __ATTR(busiest_load_per_task, 0666, mc_busiest_load_per_task, NULL);
 static struct kobj_attribute mc_busiest_nr_running_attr		= __ATTR(busiest_nr_running, 0666, mc_busiest_nr_running, NULL);
 static struct kobj_attribute mc_busiest_group_capacity_attr	= __ATTR(busiest_group_capacity, 0666, mc_busiest_group_capacity, NULL);
@@ -689,6 +728,7 @@ static struct attribute *smt_lb_stat_attrs[] = {
 	&smt_this_load_attr.attr,
 	&smt_this_load_per_task_attr.attr,
 	&smt_this_nr_running_attr.attr,
+	&smt_max_load_attr.attr,
 	&smt_busiest_load_per_task_attr.attr,
 	&smt_busiest_nr_running_attr.attr,
 	&smt_busiest_group_capacity_attr.attr,
@@ -702,6 +742,7 @@ static struct attribute *mc_lb_stat_attrs[] = {
 	&mc_this_load_attr.attr,
 	&mc_this_load_per_task_attr.attr,
 	&mc_this_nr_running_attr.attr,
+	&mc_max_load_attr.attr,
 	&mc_busiest_load_per_task_attr.attr,
 	&mc_busiest_nr_running_attr.attr,
 	&mc_busiest_group_capacity_attr.attr,
