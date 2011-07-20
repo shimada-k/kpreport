@@ -676,28 +676,28 @@ static struct kobj_attribute nr_lb_smt_attr			= __ATTR(nr_lb_smt, 0666, nr_lb_sm
 static struct kobj_attribute nr_lb_mc_attr			= __ATTR(nr_lb_mc, 0666, nr_lb_mc, NULL);
 
 /* kpreport/stat_smt */
-static struct kobj_attribute smt_total_load_attr		= __ATTR(total_load, 0666, smt_total_load, NULL);
-static struct kobj_attribute smt_total_pwr_attr			= __ATTR(total_pwr, 0666, smt_total_pwr, NULL);
-static struct kobj_attribute smt_avg_load_attr			= __ATTR(avg_load, 0666, smt_avg_load, NULL);
-static struct kobj_attribute smt_this_load_attr			= __ATTR(this_load, 0666, smt_this_load, NULL);
-static struct kobj_attribute smt_this_load_per_task_attr	= __ATTR(this_load_per_task, 0666, smt_this_load_per_task, NULL);
-static struct kobj_attribute smt_this_nr_running_attr		= __ATTR(this_nr_running, 0666, smt_this_nr_running, NULL);
-static struct kobj_attribute smt_max_load_attr			= __ATTR(max_load, 0666, smt_max_load, NULL);
-static struct kobj_attribute smt_busiest_load_per_task_attr	= __ATTR(busiest_load_per_task, 0666, smt_busiest_load_per_task, NULL);
-static struct kobj_attribute smt_busiest_nr_running_attr	= __ATTR(busiest_nr_running, 0666, smt_busiest_nr_running, NULL);
-static struct kobj_attribute smt_busiest_group_capacity_attr	= __ATTR(busiest_group_capacity, 0666, smt_busiest_group_capacity, NULL);
+static struct kobj_attribute smt_total_load_attr		= __ATTR(smt_total_load, 0666, smt_total_load, NULL);
+static struct kobj_attribute smt_total_pwr_attr			= __ATTR(smt_total_pwr, 0666, smt_total_pwr, NULL);
+static struct kobj_attribute smt_avg_load_attr			= __ATTR(smt_avg_load, 0666, smt_avg_load, NULL);
+static struct kobj_attribute smt_this_load_attr			= __ATTR(smt_this_load, 0666, smt_this_load, NULL);
+static struct kobj_attribute smt_this_load_per_task_attr	= __ATTR(smt_this_load_per_task, 0666, smt_this_load_per_task, NULL);
+static struct kobj_attribute smt_this_nr_running_attr		= __ATTR(smt_this_nr_running, 0666, smt_this_nr_running, NULL);
+static struct kobj_attribute smt_max_load_attr			= __ATTR(smt_max_load, 0666, smt_max_load, NULL);
+static struct kobj_attribute smt_busiest_load_per_task_attr	= __ATTR(smt_busiest_load_per_task, 0666, smt_busiest_load_per_task, NULL);
+static struct kobj_attribute smt_busiest_nr_running_attr	= __ATTR(smt_busiest_nr_running, 0666, smt_busiest_nr_running, NULL);
+static struct kobj_attribute smt_busiest_group_capacity_attr	= __ATTR(smt_busiest_group_capacity, 0666, smt_busiest_group_capacity, NULL);
 
 /* kpreport/lb/stat_mc */
-static struct kobj_attribute mc_total_load_attr			= __ATTR(total_load, 0666, mc_total_load, NULL);
-static struct kobj_attribute mc_total_pwr_attr			= __ATTR(total_pwr, 0666, mc_total_pwr, NULL);
-static struct kobj_attribute mc_avg_load_attr			= __ATTR(avg_load, 0666, mc_avg_load, NULL);
-static struct kobj_attribute mc_this_load_attr			= __ATTR(this_load, 0666, mc_this_load, NULL);
-static struct kobj_attribute mc_this_load_per_task_attr		= __ATTR(this_load_per_task, 0666, mc_this_load_per_task, NULL);
-static struct kobj_attribute mc_this_nr_running_attr		= __ATTR(this_nr_running, 0666, mc_this_nr_running, NULL);
-static struct kobj_attribute mc_max_load_attr			= __ATTR(max_load, 0666, mc_max_load, NULL);
-static struct kobj_attribute mc_busiest_load_per_task_attr	= __ATTR(busiest_load_per_task, 0666, mc_busiest_load_per_task, NULL);
-static struct kobj_attribute mc_busiest_nr_running_attr		= __ATTR(busiest_nr_running, 0666, mc_busiest_nr_running, NULL);
-static struct kobj_attribute mc_busiest_group_capacity_attr	= __ATTR(busiest_group_capacity, 0666, mc_busiest_group_capacity, NULL);
+static struct kobj_attribute mc_total_load_attr			= __ATTR(mc_total_load, 0666, mc_total_load, NULL);
+static struct kobj_attribute mc_total_pwr_attr			= __ATTR(mc_total_pwr, 0666, mc_total_pwr, NULL);
+static struct kobj_attribute mc_avg_load_attr			= __ATTR(mc_avg_load, 0666, mc_avg_load, NULL);
+static struct kobj_attribute mc_this_load_attr			= __ATTR(mc_this_load, 0666, mc_this_load, NULL);
+static struct kobj_attribute mc_this_load_per_task_attr		= __ATTR(mc_this_load_per_task, 0666, mc_this_load_per_task, NULL);
+static struct kobj_attribute mc_this_nr_running_attr		= __ATTR(mc_this_nr_running, 0666, mc_this_nr_running, NULL);
+static struct kobj_attribute mc_max_load_attr			= __ATTR(mc_max_load, 0666, mc_max_load, NULL);
+static struct kobj_attribute mc_busiest_load_per_task_attr	= __ATTR(mc_busiest_load_per_task, 0666, mc_busiest_load_per_task, NULL);
+static struct kobj_attribute mc_busiest_nr_running_attr		= __ATTR(mc_busiest_nr_running, 0666, mc_busiest_nr_running, NULL);
+static struct kobj_attribute mc_busiest_group_capacity_attr	= __ATTR(mc_busiest_group_capacity, 0666, mc_busiest_group_capacity, NULL);
 
 
 static struct attribute *kpreport_attrs[] = {
