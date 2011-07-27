@@ -145,7 +145,6 @@ static void update_sg_lb_stats_lw(struct sched_group *group, int this_cpu,
 	unsigned long load, max_cpu_load, min_cpu_load;
 	int i;
 	unsigned int balance_cpu = -1, first_idle_cpu = 0;
-	unsigned long sum_avg_load_per_task;
 	unsigned long avg_load_per_task;
 
 	/* オリジナルはここにgroup->cpu_powerに値を代入するコードが入る */
@@ -181,33 +180,23 @@ static void update_sg_lb_stats_lw(struct sched_group *group, int this_cpu,
 		sgs->sum_nr_running += rq->nr_running;
 		sgs->sum_weighted_load += weighted_cpuload(i);
 
-		sum_avg_load_per_task += cpu_avg_load_per_task(i);
+		if(idle_cpu(i))	/* グループ内CPUがidleかどうか調べる */
+			sgs->idle_cpus++;
+
 	}
 
 	/* Adjust by relative CPU power of the group */
 	sgs->avg_load = (sgs->group_load * SCHED_LOAD_SCALE) / group->cpu_power;
 
+	if (sgs->sum_nr_running)
+		avg_load_per_task = sgs->sum_weighted_load / sgs->sum_nr_running;
 
-	/*
-	 * Consider the group unbalanced when the imbalance is larger
-	 * than the average weight of two tasks.
-	 *
-	 * APZ: with cgroup the avg task weight can vary wildly and
-	 *      might not be a suitable number - should we keep a
-	 *      normalized nr_running number somewhere that negates
-	 *      the hierarchy?
-	 */
-	avg_load_per_task = (sum_avg_load_per_task * SCHED_LOAD_SCALE) /
-		group->cpu_power;
-
-	if ((max_cpu_load - min_cpu_load) > 2*avg_load_per_task)
+	if ((max_cpu_load - min_cpu_load) > 2*avg_load_per_task && max_nr_running > 1)
 		sgs->group_imb = 1;
 
 	sgs->group_capacity =
 		DIV_ROUND_CLOSEST(group->cpu_power, SCHED_LOAD_SCALE);
-
-	//printk("avg_load=%lu, group_load=%lu, sum_nr_running=%lu, sum_weighted_load=%lu, group_capacity=%lu\n", sgs->avg_load, sgs->group_load, sgs->sum_nr_running, sgs->sum_weighted_load, sgs->group_capacity);
-
+	sgs->group_weight = group->group_weight;
 }
 
 static void update_sd_lb_stats_lw(struct sched_domain *sd, int this_cpu,
@@ -237,13 +226,6 @@ static void update_sd_lb_stats_lw(struct sched_domain *sd, int this_cpu,
 		update_sg_lb_stats_lw(group, this_cpu, idle, load_idx, sd_idle,
 				local_group, cpus, &sgs);
 
-		//printk("local_group=%d, total_load=%lu, total_pwr=%lu\n", local_group, sds->total_load, sds->avg_load);
-
-		//if (local_group){
-		//	printk("local_group=%d, total_load=%lu, total_pwr=%lu\n", local_group, sds->total_load, sds->avg_load);
-		//	return;
-		//}
-
 		sds->total_load += sgs.group_load;
 		sds->total_pwr += group->cpu_power;
 
@@ -255,24 +237,32 @@ static void update_sd_lb_stats_lw(struct sched_domain *sd, int this_cpu,
 		if (prefer_sibling)
 			sgs.group_capacity = min(sgs.group_capacity, 1UL);
 
+		/* このifステートメントは2つとも通る */
 		if (local_group) {
 			sds->this_load = sgs.avg_load;
 			sds->this = group;
 			sds->this_nr_running = sgs.sum_nr_running;
 			sds->this_load_per_task = sgs.sum_weighted_load;
+			sds->this_has_capacity = sgs.group_has_capacity;	/* new */
+			sds->this_idle_cpus = sgs.idle_cpus;		/* new */
+
 		} else if (sgs.avg_load > sds->max_load &&
 			   (sgs.sum_nr_running > sgs.group_capacity ||
 				sgs.group_imb)) {
 			sds->max_load = sgs.avg_load;
-			sds->busiest = group;
+			sds->busiest = group;	/* これが最終的にfind_busiest_group()の返り値になる */
 			sds->busiest_nr_running = sgs.sum_nr_running;
+			sds->busiest_idle_cpus = sgs.idle_cpus;	/* new */
+			sds->busiest_group_capacity = sgs.group_capacity;
+			sds->busiest_group_weight = sgs.group_weight;	/* new */
 			sds->busiest_load_per_task = sgs.sum_weighted_load;
+			sds->busiest_has_capacity = sgs.group_has_capacity;	/* new */
 			sds->group_imb = sgs.group_imb;
 		}
 
 		update_sd_power_savings_stats(group, sds, local_group, &sgs);
 		group = group->next;
-	} while (group != sd->groups);
+	} while (group != sd->groups);	/* ドメイン内のグループごとにループ */
 }
 
 #define MAX_DOM_LV	2
@@ -293,7 +283,7 @@ static void refresh_sds_per_dom(void)
 	for(i = 0; i < num_processors; i++){
 		int dom_lv = 0;	/* for_each_domainが制御してくれるからこの変数は単純なインクリメントでいい */
 
-		for_each_domain(i, sd){
+		for_each_domain(i, sd){ /* ドメイン数2＊CPU数　の数だけループ */
 
 			memset(&sds[i][dom_lv], 0, sizeof(struct sd_lb_stats));
 			update_sd_lb_stats_lw(sd, i, 0, &sd_idle, &cpus, &sds[i][dom_lv]);
@@ -307,6 +297,14 @@ static void refresh_sds_per_dom(void)
 
 }
 
+/*--
+	ここからコールバック関数
+					--*/
+
+
+/*
+*	SMTドメイン
+*/
 static ssize_t smt_total_load(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -415,6 +413,24 @@ static ssize_t smt_this_nr_running(struct kobject *kobj, struct kobj_attribute *
 	return len;
 }
 
+static ssize_t smt_this_idle_cpus(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][0].this_idle_cpus);
+	}
+
+	return len;
+}
+
 static ssize_t smt_max_load(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -488,6 +504,46 @@ static ssize_t smt_busiest_group_capacity(struct kobject *kobj, struct kobj_attr
 	return len;
 }
 
+static ssize_t smt_busiest_group_weight(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][0].busiest_group_weight);
+	}
+
+	return len;
+}
+
+static ssize_t smt_busiest_idle_cpus(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][0].busiest_idle_cpus);
+	}
+
+	return len;
+}
+
+/*
+*	MCドメイン
+*/
+
 static ssize_t mc_total_load(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -560,6 +616,7 @@ static ssize_t mc_this_load(struct kobject *kobj, struct kobj_attribute *attr, c
 	return len;
 }
 
+
 static ssize_t mc_this_load_per_task(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	int i;
@@ -591,6 +648,24 @@ static ssize_t mc_this_nr_running(struct kobject *kobj, struct kobj_attribute *a
 
 	for(i = 0; i < num_processors; i++){
 		len += sprintf(buf + len, "%lu,", sds[i][1].this_nr_running);
+	}
+
+	return len;
+}
+
+static ssize_t mc_this_idle_cpus(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][1].this_idle_cpus);
 	}
 
 	return len;
@@ -668,6 +743,46 @@ static ssize_t mc_busiest_group_capacity(struct kobject *kobj, struct kobj_attri
 	return len;
 }
 
+static ssize_t mc_busiest_group_weight(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][1].busiest_group_weight);
+	}
+
+	return len;
+}
+
+static ssize_t mc_busiest_idle_cpus(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	int i;
+	ssize_t len = 0;
+
+	if(get_seconds() - sds_last_modify > 5){
+		refresh_sds_per_dom();
+	}
+
+	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
+
+	for(i = 0; i < num_processors; i++){
+		len += sprintf(buf + len, "%lu,", sds[i][1].busiest_idle_cpus);
+	}
+
+	return len;
+}
+
+/*--
+	コールバック関数ここまで
+					--*/
+
 /* kpreport/ */
 static struct kobj_attribute rq_running_attr			= __ATTR(rq_running, 0666, rq_running, NULL);
 static struct kobj_attribute rq_iqr_attr			= __ATTR(rq_iqr, 0666, rq_iqr, NULL);
@@ -682,10 +797,13 @@ static struct kobj_attribute smt_avg_load_attr			= __ATTR(smt_avg_load, 0666, sm
 static struct kobj_attribute smt_this_load_attr			= __ATTR(smt_this_load, 0666, smt_this_load, NULL);
 static struct kobj_attribute smt_this_load_per_task_attr	= __ATTR(smt_this_load_per_task, 0666, smt_this_load_per_task, NULL);
 static struct kobj_attribute smt_this_nr_running_attr		= __ATTR(smt_this_nr_running, 0666, smt_this_nr_running, NULL);
+static struct kobj_attribute smt_this_idle_cpus			= __ATTR(smt_this_idle_cpus, 0666, smt_this_idle_cpus, NULL);
 static struct kobj_attribute smt_max_load_attr			= __ATTR(smt_max_load, 0666, smt_max_load, NULL);
 static struct kobj_attribute smt_busiest_load_per_task_attr	= __ATTR(smt_busiest_load_per_task, 0666, smt_busiest_load_per_task, NULL);
 static struct kobj_attribute smt_busiest_nr_running_attr	= __ATTR(smt_busiest_nr_running, 0666, smt_busiest_nr_running, NULL);
 static struct kobj_attribute smt_busiest_group_capacity_attr	= __ATTR(smt_busiest_group_capacity, 0666, smt_busiest_group_capacity, NULL);
+static struct kobj_attribute smt_busiest_group_weight_attr	= __ATTR(smt_busiest_group_weight, 0666, smt_busiest_group_weight, NULL);
+static struct kobj_attribute smt_busiest_idle_cpus		= __ATTR(smt_busiest_idle_cpus, 0666, smt_busiest_idle_cpus, NULL);
 
 /* kpreport/lb/stat_mc */
 static struct kobj_attribute mc_total_load_attr			= __ATTR(mc_total_load, 0666, mc_total_load, NULL);
@@ -694,10 +812,13 @@ static struct kobj_attribute mc_avg_load_attr			= __ATTR(mc_avg_load, 0666, mc_a
 static struct kobj_attribute mc_this_load_attr			= __ATTR(mc_this_load, 0666, mc_this_load, NULL);
 static struct kobj_attribute mc_this_load_per_task_attr		= __ATTR(mc_this_load_per_task, 0666, mc_this_load_per_task, NULL);
 static struct kobj_attribute mc_this_nr_running_attr		= __ATTR(mc_this_nr_running, 0666, mc_this_nr_running, NULL);
+static struct kobj_attribute mc_this_idle_cpus			= __ATTR(mc_this_idle_cpus, 0666, mc_this_idle_cpus, NULL);
 static struct kobj_attribute mc_max_load_attr			= __ATTR(mc_max_load, 0666, mc_max_load, NULL);
 static struct kobj_attribute mc_busiest_load_per_task_attr	= __ATTR(mc_busiest_load_per_task, 0666, mc_busiest_load_per_task, NULL);
 static struct kobj_attribute mc_busiest_nr_running_attr		= __ATTR(mc_busiest_nr_running, 0666, mc_busiest_nr_running, NULL);
 static struct kobj_attribute mc_busiest_group_capacity_attr	= __ATTR(mc_busiest_group_capacity, 0666, mc_busiest_group_capacity, NULL);
+static struct kobj_attribute mc_busiest_group_weight_attr	= __ATTR(mc_busiest_group_weight, 0666, mc_busiest_group_weight, NULL);
+static struct kobj_attribute mc_busiest_idle_cpus		= __ATTR(mc_busiest_idle_cpus, 0666, mc_busiest_idle_cpus, NULL);
 
 
 static struct attribute *kpreport_attrs[] = {
@@ -728,10 +849,13 @@ static struct attribute *smt_lb_stat_attrs[] = {
 	&smt_this_load_attr.attr,
 	&smt_this_load_per_task_attr.attr,
 	&smt_this_nr_running_attr.attr,
+	&smt_this_idle_cpus_attr.attr,
 	&smt_max_load_attr.attr,
 	&smt_busiest_load_per_task_attr.attr,
 	&smt_busiest_nr_running_attr.attr,
 	&smt_busiest_group_capacity_attr.attr,
+	&smt_busiest_group_weight_attr.attr,
+	&smt_busiest_idle_cpus_attr.attr,
 	NULL,	/* NULLで終わってないといけない */
 };
 
@@ -742,10 +866,13 @@ static struct attribute *mc_lb_stat_attrs[] = {
 	&mc_this_load_attr.attr,
 	&mc_this_load_per_task_attr.attr,
 	&mc_this_nr_running_attr.attr,
+	&mc_this_idle_cpus_attr.attr,
 	&mc_max_load_attr.attr,
 	&mc_busiest_load_per_task_attr.attr,
 	&mc_busiest_nr_running_attr.attr,
 	&mc_busiest_group_capacity_attr.attr,
+	&mc_busiest_group_weight_attr.attr,
+	&mc_busiest_idle_cpus_attr.attr,
 	NULL,	/* NULLで終わってないといけない */
 };
 
