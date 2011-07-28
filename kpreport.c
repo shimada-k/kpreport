@@ -142,15 +142,15 @@ static void update_sg_lb_stats_lw(struct sched_group *group, int this_cpu,
 			int local_group, const struct cpumask *cpus,
 			struct sg_lb_stats *sgs)
 {
-	unsigned long load, max_cpu_load, min_cpu_load;
+	unsigned long load, max_cpu_load, min_cpu_load, max_nr_running;
 	int i;
 	unsigned int balance_cpu = -1, first_idle_cpu = 0;
-	unsigned long avg_load_per_task;
+	unsigned long avg_load_per_task = 0;
 
 	/* オリジナルはここにgroup->cpu_powerに値を代入するコードが入る */
 
 	/* Tally up the load of all CPUs in the group */
-	sum_avg_load_per_task = avg_load_per_task = 0;
+	max_nr_running = 0;
 	max_cpu_load = 0;
 	min_cpu_load = ~0UL;
 
@@ -170,8 +170,10 @@ static void update_sg_lb_stats_lw(struct sched_group *group, int this_cpu,
 			load = target_load(i, load_idx);
 		} else {
 			load = source_load(i, load_idx);
-			if (load > max_cpu_load)
+			if (load > max_cpu_load){
 				max_cpu_load = load;
+				max_nr_running = rq->nr_running;
+			}
 			if (min_cpu_load > load)
 				min_cpu_load = load;
 		}
@@ -425,7 +427,7 @@ static ssize_t smt_this_idle_cpus(struct kobject *kobj, struct kobj_attribute *a
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][0].this_idle_cpus);
+		len += sprintf(buf + len, "%d,", sds[i][0].this_idle_cpus);
 	}
 
 	return len;
@@ -516,7 +518,7 @@ static ssize_t smt_busiest_group_weight(struct kobject *kobj, struct kobj_attrib
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][0].busiest_group_weight);
+		len += sprintf(buf + len, "%d,", sds[i][0].busiest_group_weight);
 	}
 
 	return len;
@@ -534,7 +536,7 @@ static ssize_t smt_busiest_idle_cpus(struct kobject *kobj, struct kobj_attribute
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][0].busiest_idle_cpus);
+		len += sprintf(buf + len, "%d,", sds[i][0].busiest_idle_cpus);
 	}
 
 	return len;
@@ -665,7 +667,7 @@ static ssize_t mc_this_idle_cpus(struct kobject *kobj, struct kobj_attribute *at
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][1].this_idle_cpus);
+		len += sprintf(buf + len, "%d,", sds[i][1].this_idle_cpus);
 	}
 
 	return len;
@@ -755,7 +757,7 @@ static ssize_t mc_busiest_group_weight(struct kobject *kobj, struct kobj_attribu
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][1].busiest_group_weight);
+		len += sprintf(buf + len, "%d,", sds[i][1].busiest_group_weight);
 	}
 
 	return len;
@@ -773,7 +775,7 @@ static ssize_t mc_busiest_idle_cpus(struct kobject *kobj, struct kobj_attribute 
 	struct sd_lb_stats (*sds)[MAX_DOM_LV] = (struct sd_lb_stats (*)[MAX_DOM_LV])sds_per_dom;
 
 	for(i = 0; i < num_processors; i++){
-		len += sprintf(buf + len, "%lu,", sds[i][1].busiest_idle_cpus);
+		len += sprintf(buf + len, "%d,", sds[i][1].busiest_idle_cpus);
 	}
 
 	return len;
@@ -797,13 +799,13 @@ static struct kobj_attribute smt_avg_load_attr			= __ATTR(smt_avg_load, 0666, sm
 static struct kobj_attribute smt_this_load_attr			= __ATTR(smt_this_load, 0666, smt_this_load, NULL);
 static struct kobj_attribute smt_this_load_per_task_attr	= __ATTR(smt_this_load_per_task, 0666, smt_this_load_per_task, NULL);
 static struct kobj_attribute smt_this_nr_running_attr		= __ATTR(smt_this_nr_running, 0666, smt_this_nr_running, NULL);
-static struct kobj_attribute smt_this_idle_cpus			= __ATTR(smt_this_idle_cpus, 0666, smt_this_idle_cpus, NULL);
+static struct kobj_attribute smt_this_idle_cpus_attr		= __ATTR(smt_this_idle_cpus, 0666, smt_this_idle_cpus, NULL);
 static struct kobj_attribute smt_max_load_attr			= __ATTR(smt_max_load, 0666, smt_max_load, NULL);
 static struct kobj_attribute smt_busiest_load_per_task_attr	= __ATTR(smt_busiest_load_per_task, 0666, smt_busiest_load_per_task, NULL);
 static struct kobj_attribute smt_busiest_nr_running_attr	= __ATTR(smt_busiest_nr_running, 0666, smt_busiest_nr_running, NULL);
 static struct kobj_attribute smt_busiest_group_capacity_attr	= __ATTR(smt_busiest_group_capacity, 0666, smt_busiest_group_capacity, NULL);
 static struct kobj_attribute smt_busiest_group_weight_attr	= __ATTR(smt_busiest_group_weight, 0666, smt_busiest_group_weight, NULL);
-static struct kobj_attribute smt_busiest_idle_cpus		= __ATTR(smt_busiest_idle_cpus, 0666, smt_busiest_idle_cpus, NULL);
+static struct kobj_attribute smt_busiest_idle_cpus_attr		= __ATTR(smt_busiest_idle_cpus, 0666, smt_busiest_idle_cpus, NULL);
 
 /* kpreport/lb/stat_mc */
 static struct kobj_attribute mc_total_load_attr			= __ATTR(mc_total_load, 0666, mc_total_load, NULL);
@@ -812,13 +814,13 @@ static struct kobj_attribute mc_avg_load_attr			= __ATTR(mc_avg_load, 0666, mc_a
 static struct kobj_attribute mc_this_load_attr			= __ATTR(mc_this_load, 0666, mc_this_load, NULL);
 static struct kobj_attribute mc_this_load_per_task_attr		= __ATTR(mc_this_load_per_task, 0666, mc_this_load_per_task, NULL);
 static struct kobj_attribute mc_this_nr_running_attr		= __ATTR(mc_this_nr_running, 0666, mc_this_nr_running, NULL);
-static struct kobj_attribute mc_this_idle_cpus			= __ATTR(mc_this_idle_cpus, 0666, mc_this_idle_cpus, NULL);
+static struct kobj_attribute mc_this_idle_cpus_attr		= __ATTR(mc_this_idle_cpus, 0666, mc_this_idle_cpus, NULL);
 static struct kobj_attribute mc_max_load_attr			= __ATTR(mc_max_load, 0666, mc_max_load, NULL);
 static struct kobj_attribute mc_busiest_load_per_task_attr	= __ATTR(mc_busiest_load_per_task, 0666, mc_busiest_load_per_task, NULL);
 static struct kobj_attribute mc_busiest_nr_running_attr		= __ATTR(mc_busiest_nr_running, 0666, mc_busiest_nr_running, NULL);
 static struct kobj_attribute mc_busiest_group_capacity_attr	= __ATTR(mc_busiest_group_capacity, 0666, mc_busiest_group_capacity, NULL);
 static struct kobj_attribute mc_busiest_group_weight_attr	= __ATTR(mc_busiest_group_weight, 0666, mc_busiest_group_weight, NULL);
-static struct kobj_attribute mc_busiest_idle_cpus		= __ATTR(mc_busiest_idle_cpus, 0666, mc_busiest_idle_cpus, NULL);
+static struct kobj_attribute mc_busiest_idle_cpus_attr		= __ATTR(mc_busiest_idle_cpus, 0666, mc_busiest_idle_cpus, NULL);
 
 
 static struct attribute *kpreport_attrs[] = {
